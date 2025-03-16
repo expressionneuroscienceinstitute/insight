@@ -3,9 +3,7 @@
 --- !u!78 &1
 TagManager:
   serializedVersion: 3
-  tags:
-  - DominantEye
-  - NonDominantEye
+  tags: []
   layers:
   - Default
   - TransparentFX
@@ -16,10 +14,10 @@ TagManager:
   - 
   - 
   - 
+  - 
+  - 
   - LeftEye
   - RightEye
-  - 
-  - 
   - 
   - 
   - 
@@ -42,9 +40,6 @@ TagManager:
   m_SortingLayers:
   - name: Default
     uniqueID: 0
-    locked: 0
-  - name: New Layer 1
-    uniqueID: 3201715807
     locked: 0
   m_RenderingLayers:
   - Default
