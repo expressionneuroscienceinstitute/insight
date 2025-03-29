@@ -11,25 +11,32 @@ public class EyeGazeLogger : MonoBehaviour
     [Tooltip("Reference to the OVREyeGaze component on the right eye.")]
     public OVREyeGaze rightEyeGaze;
 
+    [Tooltip("The target space that holds the current fixation targets.")]
+    public FollowHMD targetSpace;
+
     [Tooltip("Time interval (in seconds) to log the eye gaze data.")]
     public float logInterval = 0.1f;
+
+    [Tooltip("Participant Name or File Prefix")]
+    public string filePrefix = "insight";
 
     private float clock = 0f;
     private float logIntervaltimer = 0f;
     private string logFilePath;
-    private StringBuilder logData = new StringBuilder(); // Use StringBuilder for efficient string concatenation.
+    private readonly StringBuilder logData = new StringBuilder(); // Use StringBuilder for efficient string concatenation.
     private bool hasHeaderWritten = false;
 
     // Struct to store eye gaze data.
     public struct GazeData
     {
-        public float Timestamp;
-        public Vector3 LeftEyePos;
-        public Quaternion LeftEyeRot;
-        public Vector3 LeftEyeDir;
-        public Vector3 RightEyePos;
-        public Quaternion RightEyeRot;
-        public Vector3 RightEyeDir;
+        public float timestamp;
+        public Vector3 leftEyePos;
+        public Quaternion leftEyeRot;
+        public Vector3 leftEyeDir;
+        public Vector3 rightEyePos;
+        public Quaternion rightEyeRot;
+        public Vector3 rightEyeDir;
+        public Vector3 targetPos;
     }
 
     void Start()
@@ -42,8 +49,8 @@ public class EyeGazeLogger : MonoBehaviour
         }
 
         // Define the log file path. On Windows, Application.persistentDataPath is writable.
-        string fileSuffix = System.DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        logFilePath = Path.Combine(Application.persistentDataPath, $"eyegaze_log_{fileSuffix}.csv");
+        string fileSuffix = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        logFilePath = Path.Combine(Application.persistentDataPath, $"{filePrefix}_eyegaze_log_{fileSuffix}.csv");
     }
 
     void Update()
@@ -64,13 +71,14 @@ public class EyeGazeLogger : MonoBehaviour
         {
             GazeData data = new()
             {
-                Timestamp = clock,
-                LeftEyePos = leftEyeGaze.transform.position,
-                LeftEyeRot = leftEyeGaze.transform.rotation,
-                LeftEyeDir = leftEyeGaze.transform.forward,
-                RightEyePos = rightEyeGaze.transform.position,
-                RightEyeRot = rightEyeGaze.transform.rotation,
-                RightEyeDir = rightEyeGaze.transform.forward
+                timestamp = clock,
+                leftEyePos = leftEyeGaze.transform.position,
+                leftEyeRot = leftEyeGaze.transform.rotation,
+                leftEyeDir = leftEyeGaze.transform.forward,
+                rightEyePos = rightEyeGaze.transform.position,
+                rightEyeRot = rightEyeGaze.transform.rotation,
+                rightEyeDir = rightEyeGaze.transform.forward,
+                targetPos = targetSpace != null ? targetSpace.transform.position : Vector3.zero
             };
 
             AppendDataToLog(data);
@@ -92,8 +100,8 @@ public class EyeGazeLogger : MonoBehaviour
         }
 
         // Append the data in CSV format.
-        logData.AppendLine($"{data.Timestamp},{data.LeftEyePos.x},{data.LeftEyePos.y},{data.LeftEyePos.z},{data.LeftEyeRot.x},{data.LeftEyeRot.y},{data.LeftEyeRot.z},{data.LeftEyeRot.w},{data.LeftEyeDir.x},{data.LeftEyeDir.y},{data.LeftEyeDir.z},{data.RightEyePos.x},{data.RightEyePos.y},{data.RightEyePos.z},{data.RightEyeRot.x},{data.RightEyeRot.y},{data.RightEyeRot.z},{data.RightEyeRot.w},{data.RightEyeDir.x},{data.RightEyeDir.y},{data.RightEyeDir.z}");
-    
+        logData.AppendLine($"{data.timestamp},{data.leftEyePos.x},{data.leftEyePos.y},{data.leftEyePos.z},{data.leftEyeRot.x},{data.leftEyeRot.y},{data.leftEyeRot.z},{data.leftEyeRot.w},{data.leftEyeDir.x},{data.leftEyeDir.y},{data.leftEyeDir.z},{data.rightEyePos.x},{data.rightEyePos.y},{data.rightEyePos.z},{data.rightEyeRot.x},{data.rightEyeRot.y},{data.rightEyeRot.z},{data.rightEyeRot.w},{data.rightEyeDir.x},{data.rightEyeDir.y},{data.rightEyeDir.z},{data.targetPos.x},{data.targetPos.y},{data.targetPos.z}");
+
     }
 
 
