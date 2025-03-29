@@ -1,302 +1,267 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-from scipy.stats import pearsonr
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
-def analyze_eye_gaze_data(file_path):
-    """
-    Analyzes eye gaze data from a CSV file.
+def calculate_eye_angles(eye_dir):
+    """Calculates horizontal and vertical angles in degrees."""
+    eye_dir_normalized = eye_dir / np.linalg.norm(eye_dir)
 
-    Args:
-        file_path (str): The path to the CSV file.
+    horizontal_angle = np.degrees(np.arctan2(eye_dir_normalized[0], eye_dir_normalized[2]))
+    vertical_angle = np.degrees(np.arcsin(np.clip(eye_dir_normalized[1], -1.0, 1.0)))
 
-    Returns:
-        pandas.DataFrame: A DataFrame containing the analyzed data, or None if an error occurs.
-    """
+    return horizontal_angle, vertical_angle
+
+def calculate_target_angles(target_pos):
+    """Calculates horizontal and vertical angles of the target in degrees."""
+    target_pos_normalized = target_pos / np.linalg.norm(target_pos)
+
+    horizontal_angle = np.degrees(np.arctan2(target_pos_normalized[0], target_pos_normalized[2]))
+    vertical_angle = np.degrees(np.arcsin(np.clip(target_pos_normalized[1], -1.0, 1.0)))
+
+    return horizontal_angle, vertical_angle
+
+def analyze_eye_data(csv_file):
+    """Filters outliers, performs clustering using standard deviation, and provides detailed analysis of a given BVD battery."""
     try:
-        # Read the CSV file into a pandas DataFrame
-        df = pd.read_csv(file_path)
-
-        # --- Data Cleaning and Preprocessing ---
-
-        # Convert timestamp to datetime objects
-        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-
-        # Handle potential issues (e.g., missing values, outliers)
-        df.replace([np.inf, -np.inf], np.nan, inplace=True)  # Replace infinity with NaN
-        df.dropna(inplace=True)  # Remove rows with NaN values
-        
-
-        # --- Descriptive Statistics ---
-
-        print("\n--- Descriptive Statistics ---\n")
-        print(df.describe())
-
-        # --- Analysis of Phoria ---
-
-        print("\n--- Phoria Analysis ---\n")
-
-        # Overall Phoria Analysis
-        print("\nOverall Phoria:")
-        print(f"  Mean: {df['OverallPhoria'].mean():.3f}")
-        print(f"  Median: {df['OverallPhoria'].median():.3f}")
-        print(f"  Standard Deviation: {df['OverallPhoria'].std():.3f}")
-        print(f"  Min: {df['OverallPhoria'].min():.3f}")
-        print(f"  Max: {df['OverallPhoria'].max():.3f}")
-
-        print("\nOverall Phoria Alternative 1:")
-        print(f"  Mean: {df['OverallPhoria_Alternative1'].mean():.3f}")
-        print(f"  Median: {df['OverallPhoria_Alternative1'].median():.3f}")
-        print(f"  Standard Deviation: {df['OverallPhoria_Alternative1'].std():.3f}")
-        print(f"  Min: {df['OverallPhoria_Alternative1'].min():.3f}")
-        print(f"  Max: {df['OverallPhoria_Alternative1'].max():.3f}")
-
-        print("\nOverall Phoria Alternative 2:")
-        print(f"  Mean: {df['OverallPhoria_Alternative2'].mean():.3f}")
-        print(f"  Median: {df['OverallPhoria_Alternative2'].median():.3f}")
-        print(f"  Standard Deviation: {df['OverallPhoria_Alternative2'].std():.3f}")
-        print(f"  Min: {df['OverallPhoria_Alternative2'].min():.3f}")
-        print(f"  Max: {df['OverallPhoria_Alternative2'].max():.3f}")
-
-        print("\nOverall Phoria Alternative 3:")
-        print(f"  Mean: {df['OverallPhoria_Alternative3'].mean():.3f}")
-        print(f"  Median: {df['OverallPhoria_Alternative3'].median():.3f}")
-        print(f"  Standard Deviation: {df['OverallPhoria_Alternative3'].std():.3f}")
-        print(f"  Min: {df['OverallPhoria_Alternative3'].min():.3f}")
-        print(f"  Max: {df['OverallPhoria_Alternative3'].max():.3f}")
-
-        # Left Phoria Analysis
-        print("\nLeft Phoria:")
-        print(f"  Mean: {df['LeftPhoria'].mean():.3f}")
-        print(f"  Median: {df['LeftPhoria'].median():.3f}")
-        print(f"  Standard Deviation: {df['LeftPhoria'].std():.3f}")
-        print(f"  Min: {df['LeftPhoria'].min():.3f}")
-        print(f"  Max: {df['LeftPhoria'].max():.3f}")
-
-        # Right Phoria Analysis
-        print("\nRight Phoria:")
-        print(f"  Mean: {df['RightPhoria'].mean():.3f}")
-        print(f"  Median: {df['RightPhoria'].median():.3f}")
-        print(f"  Standard Deviation: {df['RightPhoria'].std():.3f}")
-        print(f"  Min: {df['RightPhoria'].min():.3f}")
-        print(f"  Max: {df['RightPhoria'].max():.3f}")
-
-        # --- Analysis by Target Name ---
-
-        print("\n--- Phoria Analysis by Target Name ---\n")
-        for target_name in df['TargetName'].unique():
-            target_df = df[df['TargetName'] == target_name]
-            print(f"\nTarget: {target_name}")
-            print(f"  Average Overall Phoria: {target_df['OverallPhoria'].mean():.3f}")
-            print(f"  Average Left Phoria: {target_df['LeftPhoria'].mean():.3f}")
-            print(f"  Average Right Phoria: {target_df['RightPhoria'].mean():.3f}")
-            print(f"  Average Overall Phoria Alternative 1: {target_df['OverallPhoria_Alternative1'].mean():.3f}")
-            print(f"  Average Overall Phoria Alternative 2: {target_df['OverallPhoria_Alternative2'].mean():.3f}")
-            print(f"  Average Overall Phoria Alternative 3: {target_df['OverallPhoria_Alternative3'].mean():.3f}")
-
-        # --- Time Series Analysis ---
-
-        print("\n--- Time Series Analysis ---\n")
-
-        # Example: Plot overall phoria over time
-        plt.figure(figsize=(12, 6))
-        plt.plot(df['Timestamp'], df['OverallPhoria'], label='Overall Phoria')
-        plt.plot(df['Timestamp'], df['OverallPhoria_Alternative1'], label='Overall Phoria Alternative 1')
-        plt.plot(df['Timestamp'], df['OverallPhoria_Alternative2'], label='Overall Phoria Alternative 2')
-        plt.plot(df['Timestamp'], df['OverallPhoria_Alternative3'], label='Overall Phoria Alternative 3')
-        plt.xlabel('Timestamp')
-        plt.ylabel('Phoria (Diopters)')
-        plt.title('Overall Phoria Over Time')
-        plt.legend()
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.show()
-
-        # --- Distribution Analysis (Histograms) ---
-        print("\n--- Distribution Analysis ---\n")
-
-        # Example: Histogram of Overall Phoria
-        plt.figure(figsize=(10, 5))
-        plt.hist(df['OverallPhoria'], bins=20, edgecolor='black')
-        plt.title('Distribution of Overall Phoria')
-        plt.xlabel('Overall Phoria (Diopters)')
-        plt.ylabel('Frequency')
-        plt.tight_layout()
-        plt.show()
-
-        # Example: Histogram of Left Phoria
-        plt.figure(figsize=(10, 5))
-        plt.hist(df['LeftPhoria'], bins=20, edgecolor='black')
-        plt.title('Distribution of Left Phoria')
-        plt.xlabel('Left Phoria (Diopters)')
-        plt.ylabel('Frequency')
-        plt.tight_layout()
-        plt.show()
-
-        # Example: Histogram of Right Phoria
-        plt.figure(figsize=(10, 5))
-        plt.hist(df['RightPhoria'], bins=20, edgecolor='black')
-        plt.title('Distribution of Right Phoria')
-        plt.xlabel('Right Phoria (Diopters)')
-        plt.ylabel('Frequency')
-        plt.tight_layout()
-        plt.show()
-
-        # --- Gaze Direction and Position Analysis ---
-
-        print("\n--- Gaze Direction and Position Analysis ---\n")
-
-        # Example: Calculate mean gaze direction for each eye
-        print("\nMean Left Eye Direction:")
-        print(f"  X: {df['LeftEyeDirX'].mean():.3f}")
-        print(f"  Y: {df['LeftEyeDirY'].mean():.3f}")
-        print(f"  Z: {df['LeftEyeDirZ'].mean():.3f}")
-
-        print("\nMean Right Eye Direction:")
-        print(f"  X: {df['RightEyeDirX'].mean():.3f}")
-        print(f"  Y: {df['RightEyeDirY'].mean():.3f}")
-        print(f"  Z: {df['RightEyeDirZ'].mean():.3f}")
-
-        print("\nMean Left Eye Position:")
-        print(f"  X: {df['LeftEyePosX'].mean():.3f}")
-        print(f"  Y: {df['LeftEyePosY'].mean():.3f}")
-        print(f"  Z: {df['LeftEyePosZ'].mean():.3f}")
-
-        print("\nMean Right Eye Position:")
-        print(f"  X: {df['RightEyePosX'].mean():.3f}")
-        print(f"  Y: {df['RightEyePosY'].mean():.3f}")
-        print(f"  Z: {df['RightEyePosZ'].mean():.3f}")
-
-        print("\nMean Vergence Point:")
-        print(f"  X: {df['VergencePointX'].mean():.3f}")
-        print(f"  Y: {df['VergencePointY'].mean():.3f}")
-        print(f"  Z: {df['VergencePointZ'].mean():.3f}")
-
-        # Example: Target center mean values.
-        print("\nMean Target Center Position:")
-        print(f"  X: {df['TargetCenterX'].mean():.3f}")
-        print(f"  Y: {df['TargetCenterY'].mean():.3f}")
-        print(f"  Z: {df['TargetCenterZ'].mean():.3f}")
-
-        # --- Advanced Analyses ---
-
-        print("\n--- Advanced Analyses ---\n")
-
-        # 1. Correlation Analysis: Phoria vs. Vergence Distance
-        print("\n1. Correlation Analysis: Phoria vs. Vergence Distance")
-        df['VergenceDistance'] = np.sqrt(df['VergencePointX']**2 + df['VergencePointY']**2 + df['VergencePointZ']**2)
-        correlation, p_value = pearsonr(df['OverallPhoria'], df['VergenceDistance'])
-        print(f"   Correlation (Overall Phoria vs. Vergence Distance): {correlation:.3f}")
-        print(f"   P-value: {p_value:.3f}")
-        #Interpret the results.
-        if p_value < 0.05:
-            print("   There is a statistically significant correlation between Overall Phoria and Vergence Distance.")
-        else:
-            print("   There is no statistically significant correlation between Overall Phoria and Vergence Distance.")
-        
-        correlation, p_value = pearsonr(df['LeftPhoria'], df['VergenceDistance'])
-        print(f"   Correlation (Left Phoria vs. Vergence Distance): {correlation:.3f}")
-        print(f"   P-value: {p_value:.3f}")
-        #Interpret the results.
-        if p_value < 0.05:
-            print("   There is a statistically significant correlation between Left Phoria and Vergence Distance.")
-        else:
-            print("   There is no statistically significant correlation between Left Phoria and Vergence Distance.")
-
-        correlation, p_value = pearsonr(df['RightPhoria'], df['VergenceDistance'])
-        print(f"   Correlation (Right Phoria vs. Vergence Distance): {correlation:.3f}")
-        print(f"   P-value: {p_value:.3f}")
-        #Interpret the results.
-        if p_value < 0.05:
-            print("   There is a statistically significant correlation between Right Phoria and Vergence Distance.")
-        else:
-            print("   There is no statistically significant correlation between Right Phoria and Vergence Distance.")
-
-        # 2. Phoria Change over Time (Trend Analysis)
-        print("\n2. Phoria Change Over Time (Trend Analysis)")
-        # Calculate rolling mean to smooth out short term fluctuation.
-        df['OverallPhoria_RollingMean'] = df['OverallPhoria'].rolling(window=50).mean()
-        # Plot rolling mean over time.
-        plt.figure(figsize=(12, 6))
-        plt.plot(df['Timestamp'], df['OverallPhoria'], label='Overall Phoria (Raw)')
-        plt.plot(df['Timestamp'], df['OverallPhoria_RollingMean'], label='Overall Phoria (Rolling Mean)')
-        plt.xlabel('Timestamp')
-        plt.ylabel('Phoria (Diopters)')
-        plt.title('Overall Phoria Over Time (with Rolling Mean)')
-        plt.legend()
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        plt.show()
-        
-        #3. Vergence Point Scatter Plot with Target Center
-        print("\n3. Vergence Point Scatter Plot with Target Center")
-        plt.figure(figsize=(8, 8))
-        plt.scatter(df['VergencePointX'], df['VergencePointY'], label='Vergence Points', alpha=0.5)
-        plt.scatter(df['TargetCenterX'].mean(), df['TargetCenterY'].mean(), color='red', marker='x', s=200, label='Mean Target Center')
-        plt.xlabel('X Coordinate')
-        plt.ylabel('Y Coordinate')
-        plt.title('Vergence Point Scatter Plot with Mean Target Center')
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-
-        # 4. Gaze Direction Scatter Plot
-        print("\n4. Gaze Direction Scatter Plot")
-        plt.figure(figsize=(8, 8))
-        plt.scatter(df['LeftEyeDirX'], df['LeftEyeDirY'], label='Left Eye Direction', alpha=0.5)
-        plt.scatter(df['RightEyeDirX'], df['RightEyeDirY'], label='Right Eye Direction', alpha=0.5)
-        plt.xlabel('X Coordinate')
-        plt.ylabel('Y Coordinate')
-        plt.title('Gaze Direction Scatter Plot')
-        plt.legend()
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-
-        # --- Additional Analyses ---
-
-        # You can add more sophisticated analyses here:
-        # - More detailed analysis of misalignment types.
-        # - Comparing different targets or conditions.
-        # - Machine learning models to classify or predict misalignment.
-
-        return df
-
+        df = pd.read_csv(csv_file)
     except FileNotFoundError:
-        print(f"Error: File not found at {file_path}")
-        return None
-    except pd.errors.EmptyDataError:
-        print(f"Error: File at {file_path} is empty.")
-        return None
-    except pd.errors.ParserError:
-        print(f"Error: Could not parse the file at {file_path}. Check the file format.")
-        return None
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
-        return None
+        print(f"Error: File '{csv_file}' not found.")
+        return
+
+    left_horizontal_list = []
+    left_vertical_list = []
+    right_horizontal_list = []
+    right_vertical_list = []
+    target_horizontal_list = []
+    target_vertical_list = []
+
+    for index, row in df.iterrows():
+        left_eye_dir = np.array([row['LeftEyeDirX'], row['LeftEyeDirY'], row['LeftEyeDirZ']])
+        right_eye_dir = np.array([row['RightEyeDirX'], row['RightEyeDirY'], row['RightEyeDirZ']])
+        target_pos = np.array([row['TargetCenterX'], row['TargetCenterY'], row['TargetCenterZ']])
+
+        left_horizontal, left_vertical = calculate_eye_angles(left_eye_dir)
+        right_horizontal, right_vertical = calculate_eye_angles(right_eye_dir)
+        target_horizontal, target_vertical = calculate_target_angles(target_pos)
+
+        left_horizontal_list.append(left_horizontal)
+        left_vertical_list.append(left_vertical)
+        right_horizontal_list.append(right_horizontal)
+        right_vertical_list.append(right_vertical)
+        target_horizontal_list.append(target_horizontal)
+        target_vertical_list.append(target_vertical)
+
+    df['LeftHorizontal'] = left_horizontal_list
+    df['LeftVertical'] = left_vertical_list
+    df['RightHorizontal'] = right_horizontal_list
+    df['RightVertical'] = right_vertical_list
+    df['TargetHorizontal'] = target_horizontal_list
+    df['TargetVertical'] = target_vertical_list
+
+    # Outlier Filtering (std deviation)
+    mean_horizontal_left = df['LeftHorizontal'].mean()
+    std_horizontal_left = df['LeftHorizontal'].std()
+    mean_vertical_left = df['LeftVertical'].mean()
+    std_vertical_left = df['LeftVertical'].std()
+    mean_horizontal_right = df['RightHorizontal'].mean()
+    std_horizontal_right = df['RightHorizontal'].std()
+    mean_vertical_right = df['RightVertical'].mean()
+    std_vertical_right = df['RightVertical'].std()
+
+    threshold_horizontal_left = 3 * std_horizontal_left
+    threshold_vertical_left = 3 * std_vertical_left
+    threshold_horizontal_right = 3 * std_horizontal_right
+    threshold_vertical_right = 3 * std_vertical_right
+
+    df_filtered = df[(np.abs(df['LeftHorizontal'] - mean_horizontal_left) < threshold_horizontal_left) &
+                     (np.abs(df['LeftVertical'] - mean_vertical_left) < threshold_vertical_left) &
+                     (np.abs(df['RightHorizontal'] - mean_horizontal_right) < threshold_horizontal_right) &
+                     (np.abs(df['RightVertical'] - mean_vertical_right) < threshold_vertical_right)].copy()
+
+    # Clustering (K-Means)
+    features = df_filtered[['LeftHorizontal', 'LeftVertical', 'RightHorizontal', 'RightVertical']]
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+
+    kmeans = KMeans(n_clusters=3, random_state=42)
+    df_filtered.loc[:, 'Cluster'] = kmeans.fit_predict(scaled_features)
+
+    # Angular Statistics
+    print("Eye Angle Statistics:")
+    print(df_filtered[['LeftHorizontal', 'LeftVertical', 'RightHorizontal', 'RightVertical']].describe())
+    print("\nDataFrame Description:")
+    print(df_filtered.describe())
+
+    # Plots
+    # All plots should share an initial scale in order to show 
+    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
+    ax1 = axes[0]
+    ax2 = axes[1]
+    ax3 = axes[2]
+
+    ax1.plot(df_filtered['Timestamp'], df_filtered['LeftHorizontal'], label='Left Horizontal')
+    ax1.plot(df_filtered['Timestamp'], df_filtered['RightHorizontal'], label='Right Horizontal')
+    ax1.plot(df_filtered['Timestamp'], df_filtered['TargetHorizontal'], label='Target Horizontal', linestyle='--')
+    ax1.set_ylabel('Horizontal Angle (Degrees)')
+    ax1.set_title('Horizontal Eye Movement Over Time')
+    ax1.legend()
+    ax1.grid(True)
+    ax1.set_ylim(-5, 5)
+
+    ax2.plot(df_filtered['Timestamp'], df_filtered['LeftVertical'], label='Left Vertical')
+    ax2.plot(df_filtered['Timestamp'], df_filtered['RightVertical'], label='Right Vertical')
+    ax2.plot(df_filtered['Timestamp'], df_filtered['TargetVertical'], label='Target Vertical', linestyle='--')
+    ax2.set_xlabel('Timestamp')
+    ax2.set_ylabel('Vertical Angle (Degrees)')
+    ax2.set_title('Vertical Eye Movement Over Time')
+    ax2.legend()
+    ax2.grid(True)
+
+    ymin = min(df_filtered['LeftVertical'].min(), df_filtered['RightVertical'].min(), df_filtered['TargetVertical'].min())
+    ymax = max(df_filtered['LeftVertical'].max(), df_filtered['RightVertical'].max(), df_filtered['TargetVertical'].max())
+    ax2.set_ylim(ymin, ymax)
+    
+    ax3.plot(df_filtered['Timestamp'], df_filtered['TargetHorizontal'], label='Target Horizontal')
+    ax3.plot(df_filtered['Timestamp'], df_filtered['TargetVertical'], label='Target Vertical')
+    ax3.set_xlabel('Timestamp')
+    ax3.set_ylabel('Target Angle (Degrees)')
+    ax3.set_title('Target Movement Over Time')
+    ax3.legend()
+    ax3.grid(True)
+    ax3.set_ylim(ymin, ymax)
+
+    plt.tight_layout()
+    plt.show()
+
+    # Scatter plots
+    plt.figure(figsize=(18, 6))
+    plt.subplot(1, 3, 1)
+    sns.scatterplot(x='LeftHorizontal', y='LeftVertical', hue='Cluster', data=df_filtered)
+    plt.xlabel('Horizontal Angle (Degrees)')
+    plt.ylabel('Vertical Angle (Degrees)')
+    plt.title('Left Eye Movement')
+    plt.grid(True)
+    plt.xlim(-5, 5)
+    plt.ylim(ymin, ymax)
+
+    plt.subplot(1, 3, 2)
+    sns.scatterplot(x='RightHorizontal', y='RightVertical', hue='Cluster', data=df_filtered)
+    plt.xlabel('Horizontal Angle (Degrees)')
+    plt.ylabel('Vertical Angle (Degrees)')
+    plt.title('Right Eye Movement')
+    plt.grid(True)
+    plt.xlim(-5, 5)
+    plt.ylim(ymin, ymax)
+    
+    plt.subplot(1, 3, 3)
+    sns.scatterplot(x='TargetHorizontal', y='TargetVertical', data=df_filtered)
+    plt.xlabel('Horizontal Angle (Degrees)')
+    plt.ylabel('Vertical Angle (Degrees)')
+    plt.title('Target Movement')
+    plt.grid(True)
+    plt.xlim(-5, 5)
+    plt.ylim(ymin, ymax)
+
+    plt.tight_layout()
+    plt.show()
+
+   # Binocular Fusion
+    fusion_tolerance = 2.0 # Adjust as needed for testing battery
+    df_filtered.loc[:, 'BinocularFusion'] = np.abs(df_filtered['LeftHorizontal'] - df_filtered['RightHorizontal']) < fusion_tolerance
+
+    fusion_indices = df_filtered[df_filtered['BinocularFusion']].index
+    fusion_times = df_filtered[df_filtered['BinocularFusion']]['Timestamp']
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(df_filtered['Timestamp'], df_filtered['LeftHorizontal'], label='Left Horizontal')
+    plt.plot(df_filtered['Timestamp'], df_filtered['RightHorizontal'], label='Right Horizontal')
+    plt.scatter(fusion_times, df_filtered.loc[fusion_indices, 'LeftHorizontal'], color='green', label='Binocular Fusion', marker='o', s=15)
+    plt.xlabel('Timestamp')
+    plt.ylabel('Horizontal Angle (Degrees)')
+    plt.title('Horizontal Eye Movement Over Time with Binocular Fusion')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
+    if len(fusion_times) > 0:
+        print("\nBinocular Fusion Detected:")
+        print(f"  Number of Fusion Instances: {len(fusion_times)}")
+        print(f"  Fusion Times (Timestamps): {fusion_times.tolist()}")
+        print("Horizontal Angles During Fusion:")
+        print(df_filtered.loc[fusion_indices, ['LeftHorizontal', 'RightHorizontal']])
+    else:
+        print("\nNo binocular fusion detected within the specified tolerance.")
 
 
-def main():
-    """
-    Main function to run the eye gaze data analysis.
-    """
-    # Choose a file to analyze or analyze all files in a directory
-    # Example 1: Analyze a single file
-    file_path = "C:\\Users\\dylan\\AppData\\LocalLow\\DefaultCompany\\binoclear_insight\\eyegaze_log_20250227_213850.csv"  # Replace with the actual file path
-    analyze_eye_gaze_data(file_path)
+    # Correlation Matrix
+    correlation_matrix = df_filtered[['LeftHorizontal', 'LeftVertical', 'RightHorizontal', 'RightVertical', 'TargetHorizontal', 'TargetVertical']].corr()
+    plt.figure(figsize=(8, 6))
+    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', vmin=-1, vmax=1)
+    plt.title('Correlation Matrix of Eye and Target Movements')
+    plt.show()
 
-    # # Example 2: Analyze all CSV files in a directory:
-    # data_directory = "C:\\Users\\dylan\\AppData\\LocalLow\\DefaultCompany\\binoclear_insight"
+    # Histograms
+    plt.figure(figsize=(18, 8))
+    plt.subplot(2, 3, 1)
+    sns.histplot(df_filtered['LeftHorizontal'], kde=True)
+    plt.title('Left Horizontal Distribution')
+    plt.xlabel('Horizontal Angle (Degrees)')
+    plt.xlim(-5, 5)
 
-    # for filename in os.listdir(data_directory):
-    #     if filename.startswith("eyegaze_log") and filename.endswith(".csv"):
-    #         print(f"\n\nAnalyzing file: {filename}")
-    #         file_path = os.path.join(data_directory, filename)
-    #         analyze_eye_gaze_data(file_path)
-    #         print("\n\nFinished analyzing file: ", filename)
+    plt.subplot(2, 3, 2)
+    sns.histplot(df_filtered['RightHorizontal'], kde=True)
+    plt.title('Right Horizontal Distribution')
+    plt.xlabel('Horizontal Angle (Degrees)')
+    plt.xlim(-5, 5)
 
+    plt.subplot(2, 3, 3)
+    sns.histplot(df_filtered['TargetHorizontal'], kde=True)
+    plt.title('Target Horizontal Distribution')
+    plt.xlabel('Horizontal Angle (Degrees)')
+    plt.xlim(-5, 5)
+
+    plt.subplot(2, 3, 4)
+    sns.histplot(df_filtered['LeftVertical'], kde=True)
+    plt.title('Left Vertical Distribution')
+    plt.xlabel('Vertical Angle (Degrees)')
+
+    plt.subplot(2, 3, 5)
+    sns.histplot(df_filtered['RightVertical'], kde=True)
+    plt.title('Right Vertical Distribution')
+    plt.xlabel('Vertical Angle (Degrees)')
+    
+    plt.subplot(2, 3, 6)
+    sns.histplot(df_filtered['TargetVertical'], kde=True)
+    plt.title('Target Vertical Distribution')
+    plt.xlabel('Vertical Angle (Degrees)')
+
+    plt.tight_layout()
+    plt.show()
+
+    # Base Alignment
+    base_alignment_horizontal = df_filtered[['LeftHorizontal', 'RightHorizontal']].mean().mean()
+    base_alignment_vertical = df_filtered[['LeftVertical', 'RightVertical']].mean().mean()
+
+    print(f"\nRecommended Base Alignment (Degrees):")
+    print(f"  Horizontal: {base_alignment_horizontal:.2f}")
+    print(f"  Vertical: {base_alignment_vertical:.2f}")
+
+    #Stable Sampling
+    stable_sample = df_filtered[(np.abs(df_filtered['LeftHorizontal']-base_alignment_horizontal) < 1) & (np.abs(df_filtered['RightHorizontal']-base_alignment_horizontal) < 1)]
+    if (len(stable_sample) > 0):
+        start_time = stable_sample['Timestamp'].iloc[0]
+        end_time = stable_sample['Timestamp'].iloc[-1]
+        print(f"\nStable Sample Time Range (for Fine Alignment):")
+        print(f"  Start Time: {start_time:.2f}")
+        print(f"  End Time: {end_time:.2f}")
+    else:
+        print("\nNo stable sample found within the criteria.")
 
 if __name__ == "__main__":
-    main()
+
+    csv = input("File\n")
+    file_path = f"C:\\Users\\dylan\\AppData\\LocalLow\\DefaultCompany\\binoclear_insight\\{csv}"
+    analyze_eye_data(file_path)
