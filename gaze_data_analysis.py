@@ -159,10 +159,9 @@ def analyze_eye_data(csv_file, config):
 
     # --- Plots ---
     # Plot 1: Eye Movement in Diopters and Vertical Angles
-    fig1, axes1 = plt.subplots(3, 1, figsize=(14, 15), sharex=True, sharey=True)
+    fig1, axes1 = plt.subplots(2, 1, figsize=(14, 15), sharex=True, sharey=True)
     ax1 = axes1[0]
     ax2 = axes1[1]
-    ax3 = axes1[2]
 
     ax1.plot(df_filtered['Timestamp'], df_filtered['LeftDiopters'], label='Left Diopters')
     ax1.plot(df_filtered['Timestamp'], df_filtered['RightDiopters'], label='Right Diopters')
@@ -182,25 +181,28 @@ def analyze_eye_data(csv_file, config):
     ymin = min(df_filtered['LeftVertical'].min(), df_filtered['RightVertical'].min())
     ymax = max(df_filtered['LeftVertical'].max(), df_filtered['RightVertical'].max())
     ax2.set_ylim(ymin, ymax)
-    
-    ax3.plot(df_filtered['Timestamp'], df_filtered['LeftVelocity'], label='Left Velocity')
-    ax3.plot(df_filtered['Timestamp'], df_filtered['RightVelocity'], label='Right Velocity')
-    ax3.set_xlabel('Timestamp')
-    ax3.set_ylabel('Velocity (Diopters/s)')
-    ax3.set_title('Eye Velocity Over Time')
-    ax3.legend()
-    ax3.grid(True)
 
     plt.tight_layout()
     plt.show()
 
     # Plot 2: Eye Acceleration
-    fig2, ax4 = plt.subplots(1, 1, figsize=(14, 5))
-    ax4.plot(df_filtered['Timestamp'], df_filtered['LeftAcceleration'], label='Left Acceleration')
-    ax4.plot(df_filtered['Timestamp'], df_filtered['RightAcceleration'], label='Right Acceleration')
+    fig2, axes4 = plt.subplots(2, 1, figsize=(14, 5))
+    ax3 = axes4[0]
+    ax4 = axes4[1]
+
+    ax3.plot(df_filtered['Timestamp'], df_filtered['LeftAcceleration'], label='Left Acceleration')
+    ax3.plot(df_filtered['Timestamp'], df_filtered['RightAcceleration'], label='Right Acceleration')
+    ax3.set_xlabel('Timestamp')
+    ax3.set_ylabel('Acceleration (Diopters/s^2)')
+    ax3.set_title('Eye Acceleration Over Time')
+    ax3.legend()
+    ax3.grid(True)
+
+    ax4.plot(df_filtered['Timestamp'], df_filtered['LeftVelocity'], label='Left Velocity')
+    ax4.plot(df_filtered['Timestamp'], df_filtered['RightVelocity'], label='Right Velocity')
     ax4.set_xlabel('Timestamp')
-    ax4.set_ylabel('Acceleration (Diopters/s^2)')
-    ax4.set_title('Eye Acceleration Over Time')
+    ax4.set_ylabel('Velocity (Diopters/s)')
+    ax4.set_title('Eye Velocity Over Time')
     ax4.legend()
     ax4.grid(True)
 
@@ -209,25 +211,18 @@ def analyze_eye_data(csv_file, config):
 
     # Scatter plots
     plt.figure(figsize=(18, 6))
-    plt.subplot(1, 3, 1)
+    plt.subplot(1, 2, 1)
     sns.scatterplot(x='LeftDiopters', y='LeftVertical', hue='Cluster', data=df_filtered)
     plt.xlabel('Diopters')
     plt.ylabel('Vertical Angle (Degrees)')
     plt.title('Left Eye Movement')
     plt.grid(True)
 
-    plt.subplot(1, 3, 2)
+    plt.subplot(1, 2, 2)
     sns.scatterplot(x='RightDiopters', y='RightVertical', hue='Cluster', data=df_filtered)
     plt.xlabel('Diopters')
     plt.ylabel('Vertical Angle (Degrees)')
     plt.title('Right Eye Movement')
-    plt.grid(True)
-    
-    plt.subplot(1, 3, 3)
-    sns.scatterplot(x='TargetHorizontal', y='TargetVertical', data=df_filtered)
-    plt.xlabel('Horizontal Angle (Degrees)')
-    plt.ylabel('Vertical Angle (Degrees)')
-    plt.title('Target Movement')
     plt.grid(True)
 
     plt.tight_layout()
@@ -276,16 +271,23 @@ def analyze_eye_data(csv_file, config):
     plt.show()
 
     # Base Alignment
-    base_alignment_diopter = df_filtered[['LeftDiopters', 'RightDiopters']].mean().mean()
-    base_alignment_vertical = df_filtered[['LeftVertical', 'RightVertical']].mean().mean()
+    left_base_alignment_diopter = df_filtered[['LeftDiopters']].mean().mean()
+    left_base_alignment_vertical = df_filtered[['LeftVertical']].mean().mean()
 
     print(f"\nRecommended Base Alignment:")
-    print(f"  Diopters: {base_alignment_diopter:.2f}")
-    print(f"  Vertical: {base_alignment_vertical:.2f}")
+    print(f"  Diopters: {left_base_alignment_diopter:.2f}")
+    print(f"  Vertical: {left_base_alignment_vertical:.2f}")
+
+    right_base_alignment_diopter = df_filtered[['RightDiopters']].mean().mean()
+    right_base_alignment_vertical = df_filtered[['RightVertical']].mean().mean()
+
+    print(f"\nRecommended Base Alignment (Right Eye):")
+    print(f"  Diopters: {right_base_alignment_diopter:.2f}")
+    print(f"  Vertical: {right_base_alignment_vertical:.2f}")
 
     #Stable Sampling
     stable_sample_threshold = float(config['STABLE_SAMPLE_THRESHOLD'])
-    stable_sample = df_filtered[(np.abs(df_filtered['LeftDiopters']-base_alignment_diopter) < stable_sample_threshold) & (np.abs(df_filtered['RightDiopters']-base_alignment_diopter) < stable_sample_threshold)]
+    stable_sample = df_filtered[(np.abs(df_filtered['LeftDiopters']-left_base_alignment_diopter) < stable_sample_threshold) & (np.abs(df_filtered['RightDiopters']-left_base_alignment_diopter) < stable_sample_threshold)]
     if (len(stable_sample) > 0):
         start_time = stable_sample['Timestamp'].iloc[0]
         end_time = stable_sample['Timestamp'].iloc[-1]
