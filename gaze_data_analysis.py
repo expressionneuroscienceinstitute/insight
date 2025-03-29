@@ -4,17 +4,33 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
+import configparser
+import argparse
+import os
 
-# Constants (you might want to make these configurable)
-IPD_METERS = 0.069 # Average interpupillary distance (65 mm)
-EYE_OFFSET_METERS = IPD_METERS / 2 # Distance from center of head to center of eye
-DIOPTER_TO_DEGREE_CONVERSION = 0.9 # 1 diopter is roughly 1 degree of rotation
+# --- Configuration ---
+def load_config(config_file):
+    """Loads configuration from a .ini file."""
+    config = configparser.ConfigParser()
+    config.read(config_file)
+    return config['DEFAULT']
 
+# --- Constants (Default Values) ---
+DEFAULT_CONFIG = {
+    'IPD_METERS': 0.069,
+    'DIOPTER_TO_DEGREE_CONVERSION': 1.0,
+    'OUTLIER_THRESHOLD_MULTIPLIER': 3.0,
+    'STABLE_SAMPLE_THRESHOLD': 1.0,
+    'VELOCITY_WINDOW_SIZE': 5,
+    'ACCELERATION_WINDOW_SIZE': 5
+}
+
+# --- Helper Functions ---
 def calculate_distance(point):
     """Calculates the distance from the origin to a 3D point."""
     return np.linalg.norm(point)
 
-def calculate_eye_diopters(eye_dir, is_left_eye):
+def calculate_eye_diopters(eye_dir, is_left_eye, config):
     """Calculates the diopter change for a single eye, independent of the other eye."""
     eye_dir_normalized = eye_dir / np.linalg.norm(eye_dir)
     horizontal_angle = np.degrees(np.arctan2(eye_dir_normalized[0], eye_dir_normalized[2]))
@@ -23,7 +39,7 @@ def calculate_eye_diopters(eye_dir, is_left_eye):
     if is_left_eye:
         horizontal_angle = -horizontal_angle  # Invert for left eye
 
-    diopters = horizontal_angle / DIOPTER_TO_DEGREE_CONVERSION
+    diopters = horizontal_angle / float(config['DIOPTER_TO_DEGREE_CONVERSION'])
     return diopters
 
 def calculate_vertical_angle(eye_dir):
@@ -41,9 +57,23 @@ def calculate_target_angles(target_pos):
 
     return horizontal_angle, vertical_angle
 
+def calculate_velocity(data, window_size, config):
+    """Calculates the velocity of eye movement."""
+    velocities = np.zeros_like(data)
+    for i in range(window_size, len(data)):
+        velocities[i] = (data[i] - data[i - window_size]) / window_size
+    return velocities
 
-def analyze_eye_data(csv_file):
-    """Analyzes eye data, calculating diopters and vergence."""
+def calculate_acceleration(data, window_size, config):
+    """Calculates the acceleration of eye movement."""
+    accelerations = np.zeros_like(data)
+    for i in range(window_size, len(data)):
+        accelerations[i] = (data[i] - data[i - window_size]) / window_size
+    return accelerations
+
+# --- Main Analysis Function ---
+def analyze_eye_data(csv_file, config):
+    """Analyzes eye data, calculating diopters, velocity, and acceleration."""
     try:
         df = pd.read_csv(csv_file)
     except FileNotFoundError:
@@ -63,8 +93,8 @@ def analyze_eye_data(csv_file):
         target_pos = np.array([row['TargetCenterX'], row['TargetCenterY'], row['TargetCenterZ']])
 
         # Calculate diopters for each eye
-        left_diopters = calculate_eye_diopters(left_eye_dir, is_left_eye=True)
-        right_diopters = calculate_eye_diopters(right_eye_dir, is_left_eye=False)
+        left_diopters = calculate_eye_diopters(left_eye_dir, is_left_eye=True, config=config)
+        right_diopters = calculate_eye_diopters(right_eye_dir, is_left_eye=False, config=config)
 
         # Calculate vertical angles
         left_vertical = calculate_vertical_angle(left_eye_dir)
@@ -85,7 +115,15 @@ def analyze_eye_data(csv_file):
     df['TargetHorizontal'] = target_horizontal_list
     df['TargetVertical'] = target_vertical_list
 
+    # Calculate Velocity and Acceleration
+    df['LeftVelocity'] = calculate_velocity(df['LeftDiopters'].values, int(config['VELOCITY_WINDOW_SIZE']), config)
+    df['RightVelocity'] = calculate_velocity(df['RightDiopters'].values, int(config['VELOCITY_WINDOW_SIZE']), config)
+    df['LeftAcceleration'] = calculate_acceleration(df['LeftVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
+    df['RightAcceleration'] = calculate_acceleration(df['RightVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
+
     # Outlier Filtering (std deviation)
+    outlier_threshold_multiplier = float(config['OUTLIER_THRESHOLD_MULTIPLIER'])
+
     mean_diopter_left = df['LeftDiopters'].mean()
     std_diopter_left = df['LeftDiopters'].std()
     mean_vertical_left = df['LeftVertical'].mean()
@@ -95,10 +133,10 @@ def analyze_eye_data(csv_file):
     mean_vertical_right = df['RightVertical'].mean()
     std_vertical_right = df['RightVertical'].std()
 
-    threshold_diopter_left = 3 * std_diopter_left
-    threshold_vertical_left = 3 * std_vertical_left
-    threshold_diopter_right = 3 * std_diopter_right
-    threshold_vertical_right = 3 * std_vertical_right
+    threshold_diopter_left = outlier_threshold_multiplier * std_diopter_left
+    threshold_vertical_left = outlier_threshold_multiplier * std_vertical_left
+    threshold_diopter_right = outlier_threshold_multiplier * std_diopter_right
+    threshold_vertical_right = outlier_threshold_multiplier * std_vertical_right
 
     df_filtered = df[(np.abs(df['LeftDiopters'] - mean_diopter_left) < threshold_diopter_left) &
                      (np.abs(df['LeftVertical'] - mean_vertical_left) < threshold_vertical_left) &
@@ -119,12 +157,12 @@ def analyze_eye_data(csv_file):
     print("\nDataFrame Description:")
     print(df_filtered.describe())
 
-    # Plots
-    # All plots should share an initial scale in order to show 
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12), sharex=True)
-    ax1 = axes[0]
-    ax2 = axes[1]
-    ax3 = axes[2]
+    # --- Plots ---
+    # Plot 1: Eye Movement in Diopters and Vertical Angles
+    fig1, axes1 = plt.subplots(3, 1, figsize=(14, 15), sharex=True, sharey=True)
+    ax1 = axes1[0]
+    ax2 = axes1[1]
+    ax3 = axes1[2]
 
     ax1.plot(df_filtered['Timestamp'], df_filtered['LeftDiopters'], label='Left Diopters')
     ax1.plot(df_filtered['Timestamp'], df_filtered['RightDiopters'], label='Right Diopters')
@@ -135,25 +173,36 @@ def analyze_eye_data(csv_file):
 
     ax2.plot(df_filtered['Timestamp'], df_filtered['LeftVertical'], label='Left Vertical')
     ax2.plot(df_filtered['Timestamp'], df_filtered['RightVertical'], label='Right Vertical')
-    ax2.plot(df_filtered['Timestamp'], df_filtered['TargetVertical'], label='Target Vertical', linestyle='--')
     ax2.set_xlabel('Timestamp')
     ax2.set_ylabel('Vertical Angle (Degrees)')
     ax2.set_title('Vertical Eye Movement Over Time')
     ax2.legend()
     ax2.grid(True)
 
-    ymin = min(df_filtered['LeftVertical'].min(), df_filtered['RightVertical'].min(), df_filtered['TargetVertical'].min())
-    ymax = max(df_filtered['LeftVertical'].max(), df_filtered['RightVertical'].max(), df_filtered['TargetVertical'].max())
+    ymin = min(df_filtered['LeftVertical'].min(), df_filtered['RightVertical'].min())
+    ymax = max(df_filtered['LeftVertical'].max(), df_filtered['RightVertical'].max())
     ax2.set_ylim(ymin, ymax)
     
-    ax3.plot(df_filtered['Timestamp'], df_filtered['TargetHorizontal'], label='Target Horizontal')
-    ax3.plot(df_filtered['Timestamp'], df_filtered['TargetVertical'], label='Target Vertical')
+    ax3.plot(df_filtered['Timestamp'], df_filtered['LeftVelocity'], label='Left Velocity')
+    ax3.plot(df_filtered['Timestamp'], df_filtered['RightVelocity'], label='Right Velocity')
     ax3.set_xlabel('Timestamp')
-    ax3.set_ylabel('Target Angle (Degrees)')
-    ax3.set_title('Target Movement Over Time')
+    ax3.set_ylabel('Velocity (Diopters/s)')
+    ax3.set_title('Eye Velocity Over Time')
     ax3.legend()
     ax3.grid(True)
-    ax3.set_ylim(ymin, ymax)
+
+    plt.tight_layout()
+    plt.show()
+
+    # Plot 2: Eye Acceleration
+    fig2, ax4 = plt.subplots(1, 1, figsize=(14, 5))
+    ax4.plot(df_filtered['Timestamp'], df_filtered['LeftAcceleration'], label='Left Acceleration')
+    ax4.plot(df_filtered['Timestamp'], df_filtered['RightAcceleration'], label='Right Acceleration')
+    ax4.set_xlabel('Timestamp')
+    ax4.set_ylabel('Acceleration (Diopters/s^2)')
+    ax4.set_title('Eye Acceleration Over Time')
+    ax4.legend()
+    ax4.grid(True)
 
     plt.tight_layout()
     plt.show()
@@ -235,7 +284,8 @@ def analyze_eye_data(csv_file):
     print(f"  Vertical: {base_alignment_vertical:.2f}")
 
     #Stable Sampling
-    stable_sample = df_filtered[(np.abs(df_filtered['LeftDiopters']-base_alignment_diopter) < 0.5) & (np.abs(df_filtered['RightDiopters']-base_alignment_diopter) < 0.5)]
+    stable_sample_threshold = float(config['STABLE_SAMPLE_THRESHOLD'])
+    stable_sample = df_filtered[(np.abs(df_filtered['LeftDiopters']-base_alignment_diopter) < stable_sample_threshold) & (np.abs(df_filtered['RightDiopters']-base_alignment_diopter) < stable_sample_threshold)]
     if (len(stable_sample) > 0):
         start_time = stable_sample['Timestamp'].iloc[0]
         end_time = stable_sample['Timestamp'].iloc[-1]
@@ -245,7 +295,20 @@ def analyze_eye_data(csv_file):
     else:
         print("\nNo stable sample found within the criteria.")
 
+# --- Main Execution ---
 if __name__ == "__main__":
-    csv = input("File\n")
-    file_path = f"C:\\Users\\dylan\\AppData\\LocalLow\\DefaultCompany\\binoclear_insight\\{csv}"
-    analyze_eye_data(file_path)
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Analyze eye-tracking data.")
+    parser.add_argument("csv_file", help="Path to the CSV file containing eye-tracking data.")
+    parser.add_argument("-c", "--config", help="Path to the configuration file.", default="config.ini")
+    args = parser.parse_args()
+
+    # Load configuration
+    if os.path.exists(args.config):
+        config = load_config(args.config)
+    else:
+        print(f"Warning: Configuration file '{args.config}' not found. Using default values.")
+        config = DEFAULT_CONFIG
+
+    # Analyze data
+    analyze_eye_data(args.csv_file, config)
