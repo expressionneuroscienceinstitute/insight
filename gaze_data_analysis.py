@@ -23,7 +23,7 @@ DEFAULT_CONFIG = {
     'STABLE_SAMPLE_THRESHOLD': 1.0,
     'VELOCITY_WINDOW_SIZE': 5,
     'ACCELERATION_WINDOW_SIZE': 5,
-    'SACCADE_VELOCITY_THRESHOLD': 100.0
+    'SACCADE_VELOCITY_THRESHOLD': 1
 }
 
 # --- Helper Functions ---
@@ -80,8 +80,23 @@ def calculate_acceleration(data, window_size, config):
         accelerations[i] = (data[i] - data[i - window_size]) / window_size
     return accelerations
 
-def detect_saccades(diopter_data, velocity_data, config):
-    """Detects saccades based on velocity threshold."""
+def calculate_saccade_amplitude(diopter_data, start_index, end_index, config):
+    """Calculates the amplitude of a saccade in degrees."""
+    amplitude_degrees = (diopter_data[end_index] - diopter_data[start_index]) * float(config['DIOPTER_TO_DEGREE_CONVERSION'])
+    return amplitude_degrees
+
+def calculate_saccade_duration(timestamp_data, start_index, end_index):
+    """Calculates the duration of a saccade in seconds."""
+    return timestamp_data[end_index] - timestamp_data[start_index]
+
+def calculate_saccade_peak_velocity(velocity_data, start_index, end_index, config):
+    """Calculates the peak velocity of a saccade in degrees/second."""
+    peak_velocity_diopters = np.max(np.abs(velocity_data[start_index:end_index]))
+    peak_velocity_degrees = peak_velocity_diopters * float(config['DIOPTER_TO_DEGREE_CONVERSION'])
+    return peak_velocity_degrees
+
+def detect_saccades(diopter_data, velocity_data, timestamp_data, config):
+    """Detects saccades based on velocity threshold and calculates their characteristics."""
     saccades = []
     in_saccade = False
     saccade_start = None
@@ -93,7 +108,17 @@ def detect_saccades(diopter_data, velocity_data, config):
             saccade_start = i
         elif in_saccade and abs(velocity_data[i]) < threshold:
             in_saccade = False
-            saccades.append((saccade_start, i))
+            saccade_end = i
+            amplitude = calculate_saccade_amplitude(diopter_data, saccade_start, saccade_end, config)
+            duration = calculate_saccade_duration(timestamp_data, saccade_start, saccade_end)
+            peak_velocity = calculate_saccade_peak_velocity(velocity_data, saccade_start, saccade_end, config)
+            saccades.append({
+                'start_index': saccade_start,
+                'end_index': saccade_end,
+                'amplitude': amplitude,
+                'duration': duration,
+                'peak_velocity': peak_velocity
+            })
 
     return saccades
 
@@ -148,12 +173,16 @@ def analyze_eye_data(csv_file, config):
     df['RightAcceleration'] = calculate_acceleration(df['RightVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
 
     # Detect Saccades
-    df['LeftSaccades'] = [detect_saccades(df['LeftDiopters'].values, df['LeftVelocity'].values, config)] * len(df)
-    df['RightSaccades'] = [detect_saccades(df['RightDiopters'].values, df['RightVelocity'].values, config)] * len(df)
+    df['LeftSaccades'] = [detect_saccades(df['LeftDiopters'].values, df['LeftVelocity'].values, df['Timestamp'].values, config)] * len(df)
+    df['RightSaccades'] = [detect_saccades(df['RightDiopters'].values, df['RightVelocity'].values, df['Timestamp'].values, config)] * len(df)
 
     # Print Saccade Information
     print(f"\nNumber of Left Saccades: {len(df['LeftSaccades'].iloc[0])}")
+    for saccade in df['LeftSaccades'].iloc[0]:
+        print(f"  Left Saccade: {saccade['amplitude']:.2f} degrees, Duration: {saccade['duration']:.4f}s, Peak Velocity: {saccade['peak_velocity']:.2f} degrees/s")
     print(f"Number of Right Saccades: {len(df['RightSaccades'].iloc[0])}")
+    for saccade in df['RightSaccades'].iloc[0]:
+        print(f"  Right Saccade: {saccade['amplitude']:.2f} degrees, Duration: {saccade['duration']:.4f}s, Peak Velocity: {saccade['peak_velocity']:.2f} degrees/s")
 
     # Outlier Filtering (std deviation)
     outlier_threshold_multiplier = float(config['OUTLIER_THRESHOLD_MULTIPLIER'])
