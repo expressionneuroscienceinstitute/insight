@@ -21,8 +21,9 @@ DEFAULT_CONFIG = {
     'DIOPTER_TO_DEGREE_CONVERSION': 1.0,
     'OUTLIER_THRESHOLD_MULTIPLIER': 3.0,
     'STABLE_SAMPLE_THRESHOLD': 1.0,
-    'VELOCITY_WINDOW_SIZE': 5,
-    'ACCELERATION_WINDOW_SIZE': 5
+    'VELOCITY_WINDOW_SIZE': 3,
+    'ACCELERATION_WINDOW_SIZE': 3,
+    'SACCADE_VELOCITY_THRESHOLD': 1.0
 }
 
 # --- Helper Functions ---
@@ -70,6 +71,26 @@ def calculate_acceleration(data, window_size, config):
     for i in range(window_size, len(data)):
         accelerations[i] = (data[i] - data[i - window_size]) / window_size
     return accelerations
+
+def detect_saccades(diopter_data, velocity_data, config):
+    """Detects saccades based on velocity threshold."""
+    saccades = []
+    in_saccade = False
+    saccade_start = None
+    threshold = float(config['SACCADE_VELOCITY_THRESHOLD'])
+
+    for i in range(len(velocity_data)):
+        # print(f"  Index: {i}, Velocity: {velocity_data[i]:.2f}, Threshold: {threshold:.2f}, Diopter: {diopter_data[i]:.2f}")  # Debugging
+        if not in_saccade and abs(velocity_data[i]) > threshold:
+            in_saccade = True
+            saccade_start = i
+            # print(f"    Saccade Start Detected at index: {saccade_start}")  # Debugging
+        elif in_saccade and abs(velocity_data[i]) < threshold:
+            in_saccade = False
+            saccades.append((saccade_start, i))
+            # print(f"    Saccade End Detected at index: {i}, Saccade: ({saccade_start}, {i})")  # Debugging
+
+    return saccades
 
 # --- Main Analysis Function ---
 def analyze_eye_data(csv_file, config):
@@ -120,6 +141,14 @@ def analyze_eye_data(csv_file, config):
     df['RightVelocity'] = calculate_velocity(df['RightDiopters'].values, int(config['VELOCITY_WINDOW_SIZE']), config)
     df['LeftAcceleration'] = calculate_acceleration(df['LeftVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
     df['RightAcceleration'] = calculate_acceleration(df['RightVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
+
+    # Detect Saccades
+    df['LeftSaccades'] = [detect_saccades(df['LeftDiopters'].values, df['LeftVelocity'].values, config)] * len(df)
+    df['RightSaccades'] = [detect_saccades(df['RightDiopters'].values, df['RightVelocity'].values, config)] * len(df)
+
+    # Print Saccade Information
+    print(f"\nNumber of Left Saccades: {len(df['LeftSaccades'].iloc[0])}")
+    print(f"Number of Right Saccades: {len(df['RightSaccades'].iloc[0])}")
 
     # Outlier Filtering (std deviation)
     outlier_threshold_multiplier = float(config['OUTLIER_THRESHOLD_MULTIPLIER'])
