@@ -21,9 +21,9 @@ DEFAULT_CONFIG = {
     'DIOPTER_TO_DEGREE_CONVERSION': 1.0,
     'OUTLIER_THRESHOLD_MULTIPLIER': 3.0,
     'STABLE_SAMPLE_THRESHOLD': 1.0,
-    'VELOCITY_WINDOW_SIZE': 3,
-    'ACCELERATION_WINDOW_SIZE': 3,
-    'SACCADE_VELOCITY_THRESHOLD': 1.0
+    'VELOCITY_WINDOW_SIZE': 5,
+    'ACCELERATION_WINDOW_SIZE': 5,
+    'SACCADE_VELOCITY_THRESHOLD': 100.0
 }
 
 # --- Helper Functions ---
@@ -31,17 +31,25 @@ def calculate_distance(point):
     """Calculates the distance from the origin to a 3D point."""
     return np.linalg.norm(point)
 
-def calculate_eye_diopters(eye_dir, is_left_eye, config):
+def calculate_eye_diopters(eye_dir, target_pos, is_left_eye, config):
     """Calculates the diopter change for a single eye, independent of the other eye."""
-    eye_dir_normalized = eye_dir / np.linalg.norm(eye_dir)
-    horizontal_angle = np.degrees(np.arctan2(eye_dir_normalized[0], eye_dir_normalized[2]))
-
-    # Adjust horizontal angle based on eye (left/right)
+    
+    # Calculate the optimal horizontal angle for the eye to be looking at the target
+    target_horizontal_angle = np.degrees(np.arctan2(target_pos[0], target_pos[2]))
     if is_left_eye:
-        horizontal_angle = -horizontal_angle  # Invert for left eye
+        target_horizontal_angle = -target_horizontal_angle
+    
+    # Calculate the current horizontal angle of the eye
+    eye_dir_normalized = eye_dir / np.linalg.norm(eye_dir)
+    current_horizontal_angle = np.degrees(np.arctan2(eye_dir_normalized[0], eye_dir_normalized[2]))
+    
+    # Calculate the difference between the current and optimal horizontal angles
+    angle_difference = current_horizontal_angle - target_horizontal_angle
 
-    diopters = horizontal_angle / float(config['DIOPTER_TO_DEGREE_CONVERSION'])
-    return diopters
+    # Calculate the diopter change based on the angle difference
+    diopter_change = angle_difference / float(config['DIOPTER_TO_DEGREE_CONVERSION'])
+    
+    return diopter_change
 
 def calculate_vertical_angle(eye_dir):
     """Calculates the vertical angle in degrees."""
@@ -80,15 +88,12 @@ def detect_saccades(diopter_data, velocity_data, config):
     threshold = float(config['SACCADE_VELOCITY_THRESHOLD'])
 
     for i in range(len(velocity_data)):
-        # print(f"  Index: {i}, Velocity: {velocity_data[i]:.2f}, Threshold: {threshold:.2f}, Diopter: {diopter_data[i]:.2f}")  # Debugging
         if not in_saccade and abs(velocity_data[i]) > threshold:
             in_saccade = True
             saccade_start = i
-            # print(f"    Saccade Start Detected at index: {saccade_start}")  # Debugging
         elif in_saccade and abs(velocity_data[i]) < threshold:
             in_saccade = False
             saccades.append((saccade_start, i))
-            # print(f"    Saccade End Detected at index: {i}, Saccade: ({saccade_start}, {i})")  # Debugging
 
     return saccades
 
@@ -114,8 +119,8 @@ def analyze_eye_data(csv_file, config):
         target_pos = np.array([row['TargetCenterX'], row['TargetCenterY'], row['TargetCenterZ']])
 
         # Calculate diopters for each eye
-        left_diopters = calculate_eye_diopters(left_eye_dir, is_left_eye=True, config=config)
-        right_diopters = calculate_eye_diopters(right_eye_dir, is_left_eye=False, config=config)
+        left_diopters = calculate_eye_diopters(left_eye_dir, target_pos, is_left_eye=True, config=config)
+        right_diopters = calculate_eye_diopters(right_eye_dir, target_pos, is_left_eye=False, config=config)
 
         # Calculate vertical angles
         left_vertical = calculate_vertical_angle(left_eye_dir)
@@ -303,7 +308,7 @@ def analyze_eye_data(csv_file, config):
     left_base_alignment_diopter = df_filtered[['LeftDiopters']].mean().mean()
     left_base_alignment_vertical = df_filtered[['LeftVertical']].mean().mean()
 
-    print(f"\nRecommended Base Alignment:")
+    print(f"\nRecommended Base Alignment (Left Eye):")
     print(f"  Diopters: {left_base_alignment_diopter:.2f}")
     print(f"  Vertical: {left_base_alignment_vertical:.2f}")
 
@@ -329,7 +334,7 @@ def analyze_eye_data(csv_file, config):
 # --- Main Execution ---
 if __name__ == "__main__":
     # Parse command-line arguments
-    parser = argparse.ArgumentParser(description="Analyze eye-tracking data.")
+    parser = argparse.ArgumentParser(description="Analyze eye-tracking data from the Insight Diagnostic Program.")
     parser.add_argument("csv_file", help="Path to the CSV file containing eye-tracking data.")
     parser.add_argument("-c", "--config", help="Path to the configuration file.", default="config.ini")
     args = parser.parse_args()
