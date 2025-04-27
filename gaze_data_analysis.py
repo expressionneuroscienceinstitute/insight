@@ -21,9 +21,10 @@ DEFAULT_CONFIG = {
     'DIOPTER_TO_DEGREE_CONVERSION': 1.0,
     'OUTLIER_THRESHOLD_MULTIPLIER': 3.0,
     'STABLE_SAMPLE_THRESHOLD': 1.0,
-    'VELOCITY_WINDOW_SIZE': 2,
-    'ACCELERATION_WINDOW_SIZE': 2,
-    'SACCADE_VELOCITY_THRESHOLD': 0.5
+    'VELOCITY_WINDOW_SIZE': 5,
+    'ACCELERATION_WINDOW_SIZE': 5,
+    'FIXATION_STABILITY_THRESHOLD': 0.5,
+    'FIXATION_MIN_DURATION': 0.1
 }
 
 # --- Helper Functions ---
@@ -36,12 +37,14 @@ def calculate_eye_diopters(eye_dir, target_pos, is_left_eye, config):
     
     # Calculate the optimal horizontal angle for the eye to be looking at the target
     target_horizontal_angle = np.degrees(np.arctan2(target_pos[0], target_pos[2]))
-    if is_left_eye:
-        target_horizontal_angle = -target_horizontal_angle
     
     # Calculate the current horizontal angle of the eye
     eye_dir_normalized = eye_dir / np.linalg.norm(eye_dir)
     current_horizontal_angle = np.degrees(np.arctan2(eye_dir_normalized[0], eye_dir_normalized[2]))
+
+    # Invert the left eye
+    if is_left_eye:
+        current_horizontal_angle = -current_horizontal_angle
     
     # Calculate the difference between the current and optimal horizontal angles
     angle_difference = current_horizontal_angle - target_horizontal_angle
@@ -80,47 +83,37 @@ def calculate_acceleration(data, window_size, config):
         accelerations[i] = (data[i] - data[i - window_size]) / window_size
     return accelerations
 
-def calculate_saccade_amplitude(diopter_data, start_index, end_index, config):
-    """Calculates the amplitude of a saccade in degrees."""
-    amplitude_degrees = (diopter_data[end_index] - diopter_data[start_index]) * float(config['DIOPTER_TO_DEGREE_CONVERSION'])
-    return amplitude_degrees
+def detect_fixations(diopter_data, timestamp_data, config):
+    """Detects fixations based on stability and duration thresholds."""
+    fixations = []
+    in_fixation = False
+    fixation_start = None
+    stable_count = 0
+    stability_threshold = float(config['FIXATION_STABILITY_THRESHOLD'])
+    min_duration = float(config['FIXATION_MIN_DURATION'])
 
-def calculate_saccade_duration(timestamp_data, start_index, end_index):
-    """Calculates the duration of a saccade in seconds."""
-    return timestamp_data[end_index] - timestamp_data[start_index]
+    for i in range(1, len(diopter_data)):
+        if abs(diopter_data[i] - diopter_data[i-1]) < stability_threshold:
+            if not in_fixation:
+                in_fixation = True
+                fixation_start = i - 1
+            stable_count += 1
+        else:
+            if in_fixation:
+                in_fixation = False
+                fixation_end = i - 1
+                duration = timestamp_data[fixation_end] - timestamp_data[fixation_start]
+                if duration >= min_duration:
+                    location = np.mean(diopter_data[fixation_start:fixation_end+1])
+                    fixations.append({
+                        'start_index': fixation_start,
+                        'end_index': fixation_end,
+                        'duration': duration,
+                        'location': location
+                    })
+            stable_count = 0
 
-def calculate_saccade_peak_velocity(velocity_data, start_index, end_index, config):
-    """Calculates the peak velocity of a saccade in degrees/second."""
-    peak_velocity_diopters = np.max(np.abs(velocity_data[start_index:end_index]))
-    peak_velocity_degrees = peak_velocity_diopters * float(config['DIOPTER_TO_DEGREE_CONVERSION'])
-    return peak_velocity_degrees
-
-def detect_saccades(diopter_data, velocity_data, timestamp_data, config):
-    """Detects saccades based on velocity threshold and calculates their characteristics."""
-    saccades = []
-    in_saccade = False
-    saccade_start = None
-    threshold = float(config['SACCADE_VELOCITY_THRESHOLD'])
-
-    for i in range(len(velocity_data)):
-        if not in_saccade and abs(velocity_data[i]) > threshold:
-            in_saccade = True
-            saccade_start = i
-        elif in_saccade and abs(velocity_data[i]) < threshold:
-            in_saccade = False
-            saccade_end = i
-            amplitude = calculate_saccade_amplitude(diopter_data, saccade_start, saccade_end, config)
-            duration = calculate_saccade_duration(timestamp_data, saccade_start, saccade_end)
-            peak_velocity = calculate_saccade_peak_velocity(velocity_data, saccade_start, saccade_end, config)
-            saccades.append({
-                'start_index': saccade_start,
-                'end_index': saccade_end,
-                'amplitude': amplitude,
-                'duration': duration,
-                'peak_velocity': peak_velocity
-            })
-
-    return saccades
+    return fixations
 
 # --- Main Analysis Function ---
 def analyze_eye_data(csv_file, config):
@@ -172,39 +165,45 @@ def analyze_eye_data(csv_file, config):
     df['LeftAcceleration'] = calculate_acceleration(df['LeftVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
     df['RightAcceleration'] = calculate_acceleration(df['RightVelocity'].values, int(config['ACCELERATION_WINDOW_SIZE']), config)
 
-    # Detect Saccades
-    df['LeftSaccades'] = [detect_saccades(df['LeftDiopters'].values, df['LeftVelocity'].values, df['Timestamp'].values, config)] * len(df)
-    df['RightSaccades'] = [detect_saccades(df['RightDiopters'].values, df['RightVelocity'].values, df['Timestamp'].values, config)] * len(df)
+    # Detect Fixations
+    df['LeftFixations'] = [detect_fixations(df['LeftDiopters'].values, df['Timestamp'].values, config)] * len(df)
+    df['RightFixations'] = [detect_fixations(df['RightDiopters'].values, df['Timestamp'].values, config)] * len(df)
 
-    # Print Saccade Information
-    print(f"\nNumber of Left Saccades: {len(df['LeftSaccades'].iloc[0])}")
-    for saccade in df['LeftSaccades'].iloc[0]:
-        print(f"  Left Saccade: {saccade['amplitude']:.2f} degrees, Duration: {saccade['duration']:.4f}s, Peak Velocity: {saccade['peak_velocity']:.2f} degrees/s")
-    print(f"Number of Right Saccades: {len(df['RightSaccades'].iloc[0])}")
-    for saccade in df['RightSaccades'].iloc[0]:
-        print(f"  Right Saccade: {saccade['amplitude']:.2f} degrees, Duration: {saccade['duration']:.4f}s, Peak Velocity: {saccade['peak_velocity']:.2f} degrees/s")
+    # Print Fixation Information
+    print(f"\nNumber of Left Fixations: {len(df['LeftFixations'].iloc[0])}")
+    for fixation in df['LeftFixations'].iloc[0]:
+        print(f"  Left Fixation: Duration: {fixation['duration']:.4f}s, Location: {fixation['location']:.2f} diopters")
+    print(f"Number of Right Fixations: {len(df['RightFixations'].iloc[0])}")
+    for fixation in df['RightFixations'].iloc[0]:
+        print(f"  Right Fixation: Duration: {fixation['duration']:.4f}s, Location: {fixation['location']:.2f} diopters")
 
     # Outlier Filtering (std deviation)
     outlier_threshold_multiplier = float(config['OUTLIER_THRESHOLD_MULTIPLIER'])
+    window_size = 10 # Adjust as needed
 
-    mean_diopter_left = df['LeftDiopters'].mean()
-    std_diopter_left = df['LeftDiopters'].std()
-    mean_vertical_left = df['LeftVertical'].mean()
-    std_vertical_left = df['LeftVertical'].std()
-    mean_diopter_right = df['RightDiopters'].mean()
-    std_diopter_right = df['RightDiopters'].std()
-    mean_vertical_right = df['RightVertical'].mean()
-    std_vertical_right = df['RightVertical'].std()
+    df_filtered = df.copy()
+    for i in range(window_size, len(df)):
+        window = df.iloc[i-window_size:i]
 
-    threshold_diopter_left = outlier_threshold_multiplier * std_diopter_left
-    threshold_vertical_left = outlier_threshold_multiplier * std_vertical_left
-    threshold_diopter_right = outlier_threshold_multiplier * std_diopter_right
-    threshold_vertical_right = outlier_threshold_multiplier * std_vertical_right
+        mean_diopter_left = window['LeftDiopters'].mean()
+        std_diopter_left = window['LeftDiopters'].std()
+        mean_vertical_left = window['LeftVertical'].mean()
+        std_vertical_left = window['LeftVertical'].std()
+        mean_diopter_right = window['RightDiopters'].mean()
+        std_diopter_right = window['RightDiopters'].std()
+        mean_vertical_right = window['RightVertical'].mean()
+        std_vertical_right = window['RightVertical'].std()
 
-    df_filtered = df[(np.abs(df['LeftDiopters'] - mean_diopter_left) < threshold_diopter_left) &
-                     (np.abs(df['LeftVertical'] - mean_vertical_left) < threshold_vertical_left) &
-                     (np.abs(df['RightDiopters'] - mean_diopter_right) < threshold_diopter_right) &
-                     (np.abs(df['RightVertical'] - mean_vertical_right) < threshold_vertical_right)].copy()
+        threshold_diopter_left = outlier_threshold_multiplier * std_diopter_left
+        threshold_vertical_left = outlier_threshold_multiplier * std_vertical_left
+        threshold_diopter_right = outlier_threshold_multiplier * std_diopter_right
+        threshold_vertical_right = outlier_threshold_multiplier * std_vertical_right
+
+        if (np.abs(df['LeftDiopters'].iloc[i] - mean_diopter_left) > threshold_diopter_left) or \
+           (np.abs(df['LeftVertical'].iloc[i] - mean_vertical_left) > threshold_vertical_left) or \
+           (np.abs(df['RightDiopters'].iloc[i] - mean_diopter_right) > threshold_diopter_right) or \
+           (np.abs(df['RightVertical'].iloc[i] - mean_vertical_right) > threshold_vertical_right):
+            df_filtered = df_filtered.drop(i)
 
     # Clustering (K-Means)
     features = df_filtered[['LeftDiopters', 'LeftVertical', 'RightDiopters', 'RightVertical']]

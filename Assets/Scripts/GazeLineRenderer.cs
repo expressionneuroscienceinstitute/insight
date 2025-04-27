@@ -11,6 +11,9 @@ public class GazeLineRenderer : MonoBehaviour
     private LineRenderer leftLineRenderer;
     private LineRenderer rightLineRenderer;
 
+    private LineRenderer calLeftLineRenderer;
+    private LineRenderer calRightLineRenderer;
+
     [Tooltip("How far the gaze rays should extend.")]
     public float maxDistance = 6f;
 
@@ -73,12 +76,24 @@ public class GazeLineRenderer : MonoBehaviour
         rightLineRenderer = rightLineObject.AddComponent<LineRenderer>();
         ConfigureLineRenderer(rightLineRenderer, Color.red);
         rightLineRenderer.transform.parent = transform;
+
+        // Create and configure the LineRenderer for the correct eyes
+        // Create and configure the LineRenderer for the left eye.
+        GameObject calLeftLineObject = new GameObject("CalibratedLeftGazeLine");
+        calLeftLineRenderer = calLeftLineObject.AddComponent<LineRenderer>();
+        ConfigureLineRenderer(calLeftLineRenderer, Color.blue);
+        calLeftLineRenderer.transform.parent = transform;
+        // Create and configure the LineRenderer for the right eye.
+        GameObject calRightLineObject = new GameObject("CalibratedRightGazeLine");
+        calRightLineRenderer = calRightLineObject.AddComponent<LineRenderer>();
+        ConfigureLineRenderer(calRightLineRenderer, Color.gray);
+        calRightLineRenderer.transform.parent = transform;
     }
     private void ConfigureLineRenderer(LineRenderer lineRenderer, Color color)
     {
         lineRenderer.positionCount = 2;
-        lineRenderer.startWidth = 0.005f;
-        lineRenderer.endWidth = 0.005f;
+        lineRenderer.startWidth = 0.0025f;
+        lineRenderer.endWidth = 0.0025f;
         Material lineMaterial = new Material(Shader.Find("Unlit/Color"));
         lineMaterial.color = color;
         lineRenderer.material = lineMaterial;
@@ -103,42 +118,59 @@ public class GazeLineRenderer : MonoBehaviour
 
     void Update()
     {
-        VisualizeGaze(leftEyeGaze, leftLineRenderer);
-        VisualizeGaze(rightEyeGaze, rightLineRenderer);
+        // draw *calibrated* rays from manager’s transforms
+        if (EyeCalibrationManager.Instance.Calibrated)
+        {
+            VisualizeGaze(EyeCalibrationManager.Instance.LeftGazeTransform,
+                          calLeftLineRenderer);
+            VisualizeGaze(EyeCalibrationManager.Instance.RightGazeTransform,
+                          calRightLineRenderer);
+        }
+
+        // draw *raw* rays from OVREyeGaze
+        VisualizeGaze(leftEyeGaze.transform, leftLineRenderer);
+        VisualizeGaze(rightEyeGaze.transform, rightLineRenderer);
+
         VisualizeConvergence();
     }
 
-    private void VisualizeGaze(OVREyeGaze eyeGaze, LineRenderer lineRenderer)
+    private void VisualizeGaze(Transform src, LineRenderer lr)
     {
-        if (eyeGaze != null && eyeGaze.EyeTrackingEnabled)
-        {
-            Ray gazeRay = new Ray(eyeGaze.transform.position, eyeGaze.transform.forward);
-            lineRenderer.SetPosition(0, gazeRay.origin);
-            lineRenderer.SetPosition(1, gazeRay.origin + gazeRay.direction * maxDistance);
-        }
-        else
-        {
-            lineRenderer.SetPosition(0, Vector3.zero);
-            lineRenderer.SetPosition(1, Vector3.zero);
-        }
+        Ray r = new Ray(src.position, src.forward);
+        lr.SetPosition(0, r.origin);
+        lr.SetPosition(1, r.origin + r.direction * maxDistance);
     }
 
     private void VisualizeConvergence()
     {
-        if (leftEyeGaze == null || rightEyeGaze == null || !leftEyeGaze.EyeTrackingEnabled || !rightEyeGaze.EyeTrackingEnabled || convergenceMarker == null)
+        Transform leftSrc, rightSrc;
+
+        if (EyeCalibrationManager.Instance.Calibrated)
         {
-            if (convergenceMarker)
-                convergenceMarker.SetActive(false);
+            // ----- use calibrated rays -----
+            leftSrc = EyeCalibrationManager.Instance.LeftGazeTransform;
+            rightSrc = EyeCalibrationManager.Instance.RightGazeTransform;
+        }
+        else
+        {
+            // ----- fall back to raw OVREyeGaze -----
+            leftSrc = leftEyeGaze ? leftEyeGaze.transform : null;
+            rightSrc = rightEyeGaze ? rightEyeGaze.transform : null;
+        }
+
+        // sanity check
+        if (leftSrc == null || rightSrc == null)
+        {
+            if (convergenceMarker) convergenceMarker.SetActive(false);
             return;
         }
+
         convergenceMarker.SetActive(true);
 
-        Vector3 leftEyePos = leftEyeGaze.transform.position;
-        Vector3 leftGazeDir = leftEyeGaze.transform.forward.normalized;
-        Vector3 rightEyePos = rightEyeGaze.transform.position;
-        Vector3 rightGazeDir = rightEyeGaze.transform.forward.normalized;
+        Vector3 vergencePoint = GetVergencePoint(
+            leftSrc.position, leftSrc.forward.normalized,
+            rightSrc.position, rightSrc.forward.normalized);
 
-        Vector3 vergencePoint = GetVergencePoint(leftEyePos, leftGazeDir, rightEyePos, rightGazeDir);
         convergenceMarker.transform.position = vergencePoint;
     }
 
