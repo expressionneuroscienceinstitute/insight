@@ -57,5 +57,6 @@
     "Temp/": true
   },
   "dotnet.defaultSolution": "binoclear_insight.sln",
-  "python.analysis.autoImportCompletions": true
+  "python.analysis.autoImportCompletions": true,
+  "dotnet.preferCSharpExtension": true
 }

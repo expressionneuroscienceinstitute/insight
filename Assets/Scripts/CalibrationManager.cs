@@ -14,17 +14,10 @@ public class EyeCalibrationManager : MonoBehaviour
     private const float MinSepDeg = 4f;
     public static EyeCalibrationManager Instance { get; private set; }
 
-    [Header("Random target generation (deg)")]
-    [SerializeField] private int targetCount = 12;
-    [SerializeField] private float minAzDeg = -15f;
-    [SerializeField] private float maxAzDeg = 15f;
-    [SerializeField] private float minElDeg = -10f;
-    [SerializeField] private float maxElDeg = 10f;
-
-    [Header("Depth (m)")]
-    [SerializeField] private float minDistanceM = 1.5f;
-    [SerializeField] private float maxDistanceM = 1.5f;
-
+    [Header("Target Configuration")]
+    [SerializeField] private float targetDistanceM = 1.5f;
+    [SerializeField] private float horizontalFOV = 40f; // Reduced from 90f to 40f for better visibility
+    [SerializeField] private float verticalFOV = 30f;   // Reduced from 90f to 30f for better visibility
     [SerializeField] private GameObject targetPrefab;
 
     [Header("Sampling")]
@@ -44,15 +37,16 @@ public class EyeCalibrationManager : MonoBehaviour
     public bool Calibrated { get; private set; }
     public Vector3 LeftDirection { get; private set; }
     public Vector3 RightDirection { get; private set; }
-    public Transform LeftGazeTransform  => leftGazeTransform;
+    public Transform LeftGazeTransform => leftGazeTransform;
     public Transform RightGazeTransform => rightGazeTransform;
     public System.Action OnCalibrated;
 
     // ───────── STATE ─────────
-    private readonly List<Transform> dots = new();
-    private readonly List<Vector2> rawLeft = new();
-    private readonly List<Vector2> rawRight = new();
-    private readonly List<Vector2> targets = new();
+    private readonly List<Transform> dots = new List<Transform>();
+    private readonly List<Vector2> rawLeft = new List<Vector2>();
+    private readonly List<Vector2> rawRight = new List<Vector2>();
+    private readonly List<Vector2> targets = new List<Vector2>();
+    private readonly List<Vector3> targetRelativePositions = new List<Vector3>();
 
     private int idx = -1, sampleHere = 0;
     private Matrix2x2 AL = Matrix2x2.identity, AR = Matrix2x2.identity;
@@ -75,6 +69,9 @@ public class EyeCalibrationManager : MonoBehaviour
     private void Update()
     {
         if (leftEye == null || rightEye == null || !leftEye.EyeTrackingEnabled || !rightEye.EyeTrackingEnabled) return;
+
+        // Update target positions to stay in front of the player
+        UpdateTargetPositions();
 
         Vector2 rawL = ToYawPitch(leftEye.transform.forward);
         Vector2 rawR = ToYawPitch(rightEye.transform.forward);
@@ -115,22 +112,39 @@ public class EyeCalibrationManager : MonoBehaviour
     // ───────── TARGET SPAWN ─────────
     private void SpawnDots()
     {
-        Random.InitState(System.DateTime.Now.Millisecond);
-        for (int i = 0; i < targetCount; i++)
-        {
-            Vector2 ang;
-            int guard = 0;
-            do
-            {
-                ang = new Vector2(Random.Range(minAzDeg, maxAzDeg), Random.Range(minElDeg, maxElDeg));
-            } while (!IsFarEnough(ang) && ++guard < 50);
+        // Create a 3x3 grid of targets
+        float halfHFOV = horizontalFOV * 0.5f;
+        float halfVFOV = verticalFOV * 0.5f;
 
-            float d = Random.Range(minDistanceM, maxDistanceM);
-            Vector3 dir = FromYawPitchDeg(ang);
-            Vector3 pos = head.position + dir * d;
-            var dot = Instantiate(targetPrefab, pos, Quaternion.LookRotation(-dir), transform);
-            dot.SetActive(false);
-            dots.Add(dot.transform);
+        // Calculate the angular positions for the 3x3 grid
+        // Using smaller angles for better visibility
+        float[] horizontalAngles = new float[] { -halfHFOV, 0f, halfHFOV };
+        float[] verticalAngles = new float[] { -halfVFOV, 0f, halfVFOV };
+
+        foreach (float vAngle in verticalAngles)
+        {
+            foreach (float hAngle in horizontalAngles)
+            {
+                // Convert angles to direction vector relative to forward
+                Vector3 direction = Quaternion.Euler(vAngle, hAngle, 0f) * Vector3.forward;
+                targetRelativePositions.Add(direction * targetDistanceM);
+
+                var dot = Instantiate(targetPrefab, Vector3.zero, Quaternion.identity, transform);
+                dot.SetActive(false);
+                dots.Add(dot.transform);
+            }
+        }
+    }
+
+    private void UpdateTargetPositions()
+    {
+        for (int i = 0; i < dots.Count; i++)
+        {
+            // Calculate world position based on camera's position and rotation
+            Vector3 worldPosition = head.position + head.rotation * targetRelativePositions[i];
+            dots[i].position = worldPosition;
+            // Make target face the camera
+            dots[i].rotation = Quaternion.LookRotation(head.position - worldPosition);
         }
     }
 

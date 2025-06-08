@@ -13,6 +13,10 @@ public class EyeMisalignmentCalculator
     /// <param name="targetCenter">The center point of the fixation target.</param>
     /// <param name="misalignmentData">Output parameter to store detailed misalignment information.</param>
     /// <returns>A MisalignmentResult object containing overall misalignment metrics.</returns>
+
+    static int targetTooCloseHits = 0;
+    static int convergeTooCloseHits = 0;
+    const int warnLimit = 3;   // print first 3 times, then stay silent
     public static MisalignmentResult CalculateEyeMisalignment(Vector3 leftEyePos, Vector3 leftGazeDir, Vector3 rightEyePos, Vector3 rightGazeDir, Vector3 targetCenter, out MisalignmentData misalignmentData)
     {
         // Initialize misalignment data object
@@ -28,7 +32,8 @@ public class EyeMisalignmentCalculator
         //check for bad data.
         if (leftTargetDistance < 0.05f || rightTargetDistance < 0.05f)
         {
-            Debug.LogWarning("Target too close to eye, returning null.");
+            if (targetTooCloseHits++ < warnLimit)
+                Debug.LogWarning("Target too close to eye, returning null.");
             return null;
         }
 
@@ -38,7 +43,8 @@ public class EyeMisalignmentCalculator
         //check for bad data.
         if (convergenceDistance < 0.05f)
         {
-            Debug.LogWarning("Convergence point too close, returning null.");
+            if (convergeTooCloseHits++ < warnLimit)
+                Debug.LogWarning("Convergence point too close, returning null.");
             return null;
         }
 

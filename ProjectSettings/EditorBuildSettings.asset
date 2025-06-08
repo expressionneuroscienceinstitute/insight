@@ -12,7 +12,8 @@ EditorBuildSettings:
     path: Assets/Scenes/CalibrationAlignment.unity
     guid: 3a266efeded91f44984bc28094112b05
   m_configObjects:
+    Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 0511f646b7902c0449dd6be7f7993ddb, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+    com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 4eab2a0ae4209b643a55ee5f075c49e4, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: cf6b4b199d5967847a20458a3cc0d324, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 25837a4dcaecf6a49ac670185448bc8e, type: 2}
-  m_UseUCBPForAssetBundles: 0
