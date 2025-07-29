@@ -6,11 +6,8 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/MainMenu.unity
+    path: Assets/Scenes/VRTemplate.unity
     guid: 24d8d42124eb0e943853b662ff77d6a0
-  - enabled: 1
-    path: Assets/Scenes/CalibrationAlignment.unity
-    guid: 3a266efeded91f44984bc28094112b05
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: 0511f646b7902c0449dd6be7f7993ddb, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
